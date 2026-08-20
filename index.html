@@ -1107,6 +1107,10 @@ function enterApp(uid){
 // Ziele (Monat/Woche/Tag) einheitlich im goals-Array + localStorage vf_goals.
 function loadGoals(){try{const a=JSON.parse(lsGet('vf_goals')||'null');return Array.isArray(a)?a:null}catch(e){return null}}
 function saveGoals(){lsSet('vf_goals',JSON.stringify(goals))}
+// Aufträge (orders) dauerhaft speichern/laden — localStorage vf_orders.
+// Bereits normalisierte Items (je-Produkt-Status) werden 1:1 gesichert und geladen.
+function loadOrders(){try{const a=JSON.parse(lsGet('vf_orders')||'null');return Array.isArray(a)?a:null}catch(e){return null}}
+function saveOrders(){lsSet('vf_orders',JSON.stringify(orders))}
 // Teams laden; falls leer, aus den vorhandenen Nutzer-Teams ableiten (Bestand erhalten).
 function loadTeams(){
   let t=[];try{t=JSON.parse(lsGet('vf_teams')||'[]')}catch(e){t=[];}
@@ -1204,6 +1208,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   applyStoredMentees();
   teams=loadTeams();
   { const sg=loadGoals(); if(sg) goals=sg; } // gespeicherte Ziele (Monat/Woche/Tag) laden
+  { const so=loadOrders(); if(so) orders=so; } // gespeicherte Aufträge laden (ersetzt Demo)
   ['loginUser','loginPin'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()}));
   ['regName','regUser','regPin'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')doRegister()}));
   // PIN-Felder: nur Ziffern zulassen.
@@ -1435,6 +1440,7 @@ function bookOrder(){
   const o={id:'o'+Date.now().toString(36),userId:curUid,customer,note,time:new Date(),items:[...cart],status:'yellow'};
   normalizeOrderItems(o); // jedem Produkt einen eigenen Status geben (Einzelstorno)
   orders.push(o);
+  saveOrders();
   cart=[];
   if(document.getElementById('cartCustomer')) document.getElementById('cartCustomer').value='';
   if(document.getElementById('cartNote')) document.getElementById('cartNote').value='';
@@ -1444,19 +1450,19 @@ function bookOrder(){
 
 // ── ORDER ACTIONS ──────────────────────────────────────────
 // Bestätigen: alle noch aktiven Produkte auf grün; stornierte bleiben unberührt.
-function confirmOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(itemActive(x))x.status='green';});syncOrderStatus(o);toast('✓ Bestätigt 🟢','ok');refreshAll();}}
+function confirmOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(itemActive(x))x.status='green';});syncOrderStatus(o);saveOrders();toast('✓ Bestätigt 🟢','ok');refreshAll();}}
 // Ganzer Auftrag: alle Produkte auf einmal stornieren.
-function stornoOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(itemActive(x)){x.status='red';x.stornoType='normal';}});syncOrderStatus(o);toast('Storno 🔴','err');refreshAll();}}
-function bonitaetStornoOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(itemActive(x)){x.status='red';x.stornoType='bonitaet';}});syncOrderStatus(o);toast('Bonitätsstorno 🔴','err');refreshAll();}}
-function unStornoOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(x.status==='red'){x.status='yellow';delete x.stornoType;}});syncOrderStatus(o);toast('↩ Storno rückgängig','info');refreshAll();}}
+function stornoOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(itemActive(x)){x.status='red';x.stornoType='normal';}});syncOrderStatus(o);saveOrders();toast('Storno 🔴','err');refreshAll();}}
+function bonitaetStornoOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(itemActive(x)){x.status='red';x.stornoType='bonitaet';}});syncOrderStatus(o);saveOrders();toast('Bonitätsstorno 🔴','err');refreshAll();}}
+function unStornoOrder(id){const o=orders.find(x=>x.id===id);if(o){o.items.forEach(x=>{if(x.status==='red'){x.status='yellow';delete x.stornoType;}});syncOrderStatus(o);saveOrders();toast('↩ Storno rückgängig','info');refreshAll();}}
 
 // ── EINZEL-PRODUKT-STORNO (in „Meine Aufträge") ─────────────
 // Ein einzelnes Produkt eines Auftrags stornieren / bonistornieren / rückgängig machen.
 // Normales Storno: fließt in Stornoquote UND Netsales.
-function stornoItem(id,idx){const o=orders.find(x=>x.id===id);if(o&&o.items[idx]){o.items[idx].status='red';o.items[idx].stornoType='normal';syncOrderStatus(o);toast('Produkt storniert 🔴','err');refreshAll();}}
+function stornoItem(id,idx){const o=orders.find(x=>x.id===id);if(o&&o.items[idx]){o.items[idx].status='red';o.items[idx].stornoType='normal';syncOrderStatus(o);saveOrders();toast('Produkt storniert 🔴','err');refreshAll();}}
 // Bonitätsstorno: fließt in Netsales, aber NICHT in die Stornoquote.
-function bonitaetStornoItem(id,idx){const o=orders.find(x=>x.id===id);if(o&&o.items[idx]){o.items[idx].status='red';o.items[idx].stornoType='bonitaet';syncOrderStatus(o);toast('Produkt bonitätsstorniert 🔴','err');refreshAll();}}
-function unStornoItem(id,idx){const o=orders.find(x=>x.id===id);const it=o&&o.items[idx];if(it&&it.status==='red'){it.status=o.items.some((x,i)=>i!==idx&&x.status==='green')?'green':'yellow';delete it.stornoType;syncOrderStatus(o);toast('↩ Produkt-Storno rückgängig','info');refreshAll();}}
+function bonitaetStornoItem(id,idx){const o=orders.find(x=>x.id===id);if(o&&o.items[idx]){o.items[idx].status='red';o.items[idx].stornoType='bonitaet';syncOrderStatus(o);saveOrders();toast('Produkt bonitätsstorniert 🔴','err');refreshAll();}}
+function unStornoItem(id,idx){const o=orders.find(x=>x.id===id);const it=o&&o.items[idx];if(it&&it.status==='red'){it.status=o.items.some((x,i)=>i!==idx&&x.status==='green')?'green':'yellow';delete it.stornoType;syncOrderStatus(o);saveOrders();toast('↩ Produkt-Storno rückgängig','info');refreshAll();}}
 // Auftrag endgültig löschen: verschwindet aus dem zentralen orders-Array und damit
 // aus ALLEN Auswertungen (Netsales, KIP, Provision, Stornos, historische Monate).
 // Löschen mit zuverlässigem In-App-Dialog (window.confirm ist in eingebetteten
@@ -1477,6 +1483,7 @@ function deleteOrder(id){
 function confirmDeleteOrder(id){
   const before=orders.length;
   orders=orders.filter(x=>x.id!==id);
+  saveOrders();
   closeModal();
   if(orders.length<before){toast('Auftrag gelöscht','info');refreshAll();}
   else toast('Auftrag nicht gefunden','err');
@@ -2635,6 +2642,12 @@ function addUser(){
   if(role==='mentor') nu.mentees=[];
   if(startDate) nu.startDate=startDate;
   users.push(nu);
+  // Mitglied dauerhaft sichern: Account-Datensatz (ohne PIN → Login erst über
+  // Einladung/eigene Registrierung) + Startdatum in den Profilen persistieren.
+  const accounts=loadAccounts();
+  accounts.push({username:'',pinHash:null,userId:nu.id,name,role,team:me.team,color:nu.color});
+  saveAccounts(accounts);
+  if(startDate){const store=loadProfiles();store[nu.id]=sanitizeProfile(Object.assign({},nu,{startDate}));saveProfiles(store);}
   document.getElementById('newName').value='';
   document.getElementById('newStart').value='';
   refreshAll();toast(name+' zu Team '+me.team+' hinzugefügt','ok');
